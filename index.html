@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>剑火纪元 本地AI测试</title>
+    <style>
+        * {box-sizing: border-box;margin:0;padding:0;font-family: system-ui;}
+        body {background:#1a1a22;color:#e9e9e9;padding:16px;max-width:700px;margin:0 auto;}
+        .card {background:#272733;border-radius:16px;padding:20px;margin-bottom:16px;border:1px solid #444;}
+        select, input {width:100%;padding:12px;margin:8px 0;border-radius:10px;background:#333;color:#fff;border:1px solid #555;font-size:16px;}
+        button {width:100%;padding:14px;border-radius:12px;background:#79522e;color:#fff;font-weight:bold;border:none;font-size:17px;margin-top:8px;}
+        #progress {margin:10px 0;color:#ffc87c;}
+        #chat {min-height:200px;padding:12px;background:#222;border-radius:12px;margin:12px 0;white-space:pre-wrap;}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>⚔️ 剑火纪元 - 创建角色</h2>
+        <input type="text" id="name" placeholder="姓名" value="艾德里克">
+        <input type="number" id="age" placeholder="年龄" value="20">
+        <select id="race">
+            <option>人类</option>
+            <option>精灵</option>
+            <option>矮人</option>
+        </select>
+        <select id="job">
+            <option>农民</option>
+            <option>猎人</option>
+            <option>学徒法师</option>
+        </select>
+        <div id="progress">等待加载本地AI模型...</div>
+        <button id="startBtn">✨ 踏入世界</button>
+    </div>
+    <div class="card">
+        <div id="chat"></div>
+        <input id="userInput" placeholder="输入你的行动，例如：向前走、和村民交谈">
+        <button id="sendBtn">发送行动</button>
+    </div>
+
+    <script type="module">
+        import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+        let engine = null;
+        let chatHistory = [];
+        const chatDom = document.getElementById('chat');
+        const progressDom = document.getElementById('progress');
+        const startBtn = document.getElementById('startBtn');
+        const sendBtn = document.getElementById('sendBtn');
+        const userInput = document.getElementById('userInput');
+
+        function appendText(text){
+            chatDom.innerText += text + "\n";
+            chatDom.scrollTop = chatDom.scrollHeight;
+        }
+        function onInitProgress(info){
+            progressDom.innerText = `模型加载：${info.text}`;
+        }
+
+        startBtn.onclick = async ()=>{
+            if(!engine){
+                progressDom.innerText = "开始下载并加载本地AI模型（WiFi推荐，约1.3G，仅一次）";
+                try{
+                    engine = await webllm.CreateMLCEngine(
+                        "Qwen1.5-1.8B-Chat-q4f16_1-MLC",
+                        {initProgressCallback: onInitProgress}
+                    );
+                    progressDom.innerText = "✅ AI模型就绪，开始冒险！";
+                }catch(e){
+                    progressDom.innerText = "❌ WebGPU不支持/内存不足，请确认手机内存≥6G";
+                    console.error(e);
+                    return;
+                }
+            }
+            const charInfo = `姓名：${document.getElementById('name').value}，年龄：${document.getElementById('age').value}，种族：${document.getElementById('race').value}，职业：${document.getElementById('job').value}。世界观：西幻中世纪写实世界，世界不会围着主角转，遵循现实逻辑，进行自由文字角色扮演。`;
+            chatHistory = [{"role":"system","content":charInfo}];
+            appendText("【世界】你来到灰石镇，平静的乡间小镇，冒险的起点...");
+        }
+
+        sendBtn.onclick = async ()=>{
+            const msg = userInput.value.trim();
+            if(!msg || !engine) return;
+            appendText("【你】"+msg);
+            chatHistory.push({"role":"user","content":msg});
+            const res = await engine.chat.completions.create({messages:chatHistory,stream:true});
+            let aiText = "";
+            appendText("【叙事】");
+            for await (const chunk of res){
+                const piece = chunk.choices[0].delta.content || "";
+                aiText += piece;
+                chatDom.innerText += piece;
+                chatDom.scrollTop = chatDom.scrollHeight;
+            }
+            chatHistory.push({"role":"assistant","content":aiText});
+            userInput.value = "";
+        }
+    </script>
+</body>
+</html>
